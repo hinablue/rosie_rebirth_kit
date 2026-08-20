@@ -1,4 +1,4 @@
-"""CLI entry point for the placeholder rebirth toolchain."""
+"""Command line interface. All source selection is explicit; no command targets current data by default."""
 from __future__ import annotations
 
 import argparse
@@ -8,36 +8,42 @@ from pathlib import Path
 from scripts import build_index, inspect_runtime, inventory_sources, plan_restore, semanticize, verify_rebirth
 
 
-def project_root() -> Path:
-    return Path(__file__).resolve().parents[1]
+def _print(value: object) -> None:
+    print(json.dumps(value, ensure_ascii=False, indent=2, sort_keys=True))
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Rosie Rebirth Kit scaffold")
-    subparsers = parser.add_subparsers(dest="command", required=True)
-    subparsers.add_parser("inventory")
-    subparsers.add_parser("semanticize")
-    index = subparsers.add_parser("index")
+    parser = argparse.ArgumentParser(description="Rosie Rebirth Kit")
+    sub = parser.add_subparsers(dest="command", required=True)
+    inventory = sub.add_parser("inventory", help="Inventory an explicit source directory")
+    inventory.add_argument("--source", type=Path, required=True)
+    inventory.add_argument("--output", type=Path, required=True)
+    semantic = sub.add_parser("semanticize", help="Build semantic cards from an explicit manifest")
+    semantic.add_argument("--source", type=Path, required=True)
+    semantic.add_argument("--manifest", type=Path, required=True)
+    semantic.add_argument("--output-dir", type=Path, required=True)
+    semantic.add_argument("--cards", type=Path, required=True)
+    index = sub.add_parser("index", help="Build an index from semantic cards")
+    index.add_argument("--semantic-dir", type=Path, required=True)
+    index.add_argument("--output-dir", type=Path, required=True)
     index.add_argument("--dry-run", action="store_true")
-    subparsers.add_parser("inspect")
-    subparsers.add_parser("plan")
-    verify = subparsers.add_parser("verify")
-    verify.add_argument("--archive", action="store_true")
+    inspect = sub.add_parser("inspect", help="Write a read-only runtime report")
+    inspect.add_argument("--output", type=Path, required=True)
+    plan = sub.add_parser("plan", help="Write a no-side-effect restore plan")
+    plan.add_argument("--manifest", type=Path, required=True)
+    plan.add_argument("--runtime", type=Path, required=True)
+    plan.add_argument("--output", type=Path, required=True)
+    verify = sub.add_parser("verify", help="Verify an archive workspace")
+    verify.add_argument("--root", type=Path, required=True)
     args = parser.parse_args()
-    root = project_root()
-    if args.command == "inventory":
-        print(json.dumps(inventory_sources.run(root, root / "sources/manifest.json"), ensure_ascii=False, indent=2))
-    elif args.command == "semanticize":
-        print(semanticize.run(root, root / "semantic"))
-    elif args.command == "index":
-        print(json.dumps(build_index.run(root / "semantic", root / "indexes/embedding-v1", dry_run=args.dry_run), ensure_ascii=False, indent=2))
-    elif args.command == "inspect":
-        print(json.dumps(inspect_runtime.run(root / "runtime/runtime-report.json"), ensure_ascii=False, indent=2))
-    elif args.command == "plan":
-        print(json.dumps(plan_restore.run(root / "sources/manifest.json", root / "runtime/runtime-report.json"), ensure_ascii=False, indent=2))
-    elif args.command == "verify":
-        failures = verify_rebirth.verify_archive(root)
-        print("OK" if not failures else "\n".join(failures))
+    if args.command == "inventory": _print(inventory_sources.run(args.source, args.output))
+    elif args.command == "semanticize": _print(semanticize.run(args.source, args.manifest, args.output_dir, args.cards))
+    elif args.command == "index": _print(build_index.run(args.semantic_dir, args.output_dir, dry_run=args.dry_run))
+    elif args.command == "inspect": _print(inspect_runtime.run(args.output))
+    elif args.command == "plan": _print(plan_restore.run(args.manifest, args.runtime, args.output))
+    else:
+        failures = verify_rebirth.verify_archive(args.root)
+        _print({"ok": not failures, "failures": failures})
         return 0 if not failures else 1
     return 0
 
