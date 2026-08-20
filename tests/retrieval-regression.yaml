@@ -1,0 +1,3 @@
+# Retrieval regression placeholder
+# Define query → expected source ids once an embedding provider is selected.
+queries: []

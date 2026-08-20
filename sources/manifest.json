@@ -1,0 +1,10 @@
+{
+  "schema_version": 1,
+  "sources": [
+    {
+      "path": "SOUL.md",
+      "sha256": "fa2f651ee522c6e80ed8a3e87adb2eb5004d4aea26f4c71a561c30f961d62cdd",
+      "trust_tier": "T0_core"
+    }
+  ]
+}
