@@ -67,12 +67,17 @@ class OpenAICompatibleBackend:
 
 
 def backend_from_environment() -> EmbeddingBackend:
+    kind = os.getenv("REBIRTH_EMBEDDING_KIND", "hash")
     endpoint, model, key = (os.getenv("REBIRTH_EMBEDDING_ENDPOINT"), os.getenv("REBIRTH_EMBEDDING_MODEL"), os.getenv("REBIRTH_EMBEDDING_API_KEY"))
-    if endpoint or model or key:
-        if not all((endpoint, model, key)):
-            raise ValueError("Set REBIRTH_EMBEDDING_ENDPOINT, MODEL and API_KEY together")
-        return OpenAICompatibleBackend(endpoint, model, key)
-    return HashEmbeddingBackend()
+    if kind == "hash":
+        if endpoint or model or key:
+            raise ValueError("Set REBIRTH_EMBEDDING_KIND=llama.cpp when configuring an embedding endpoint")
+        return HashEmbeddingBackend()
+    if kind != "llama.cpp":
+        raise ValueError(f"Unsupported embedding backend: {kind}")
+    if not all((endpoint, model, key)):
+        raise ValueError("llama.cpp embedding requires ENDPOINT, MODEL and API_KEY")
+    return OpenAICompatibleBackend(endpoint, model, key)
 
 
 def chunk_text(text: str, *, max_chars: int = 1200, overlap: int = 160) -> list[str]:
