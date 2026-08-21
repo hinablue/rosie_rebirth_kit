@@ -12,7 +12,11 @@
 
 ## 目前狀態
 
-此專案目前只建立可編譯的 placeholder；尚未接入 embedding provider、OpenViking 或任何 runtime 寫入介面。
+索引可使用測試用 deterministic hash backend，或連到已在運行的 OpenAI-compatible embedding endpoint（例如 `http://localhost:8001/v1`）。它不會自行啟動或管理 embedding server，也不會接觸任何既有 runtime 資料。
+
+## 資料處理流程
+
+實際資料的 inventory 與 semanticize 行為、限制與安全邊界見：[Inventory 與 Semanticize 流程](docs/source-inventory-semanticization.md)。
 
 ## CLI
 

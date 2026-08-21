@@ -9,6 +9,7 @@ import re
 import urllib.request
 from pathlib import Path
 from typing import Protocol
+from urllib.parse import urlsplit, urlunsplit
 
 from scripts.common.hashes import sha256_file, sha256_json
 from scripts.common.io_safe import write_json
@@ -47,16 +48,26 @@ class HashEmbeddingBackend:
 
 
 class OpenAICompatibleBackend:
-    """Minimal stdlib client; API key is read only at invocation time."""
+    """Minimal client for an already-running OpenAI-compatible embedding API.
+
+    The endpoint may be either the embeddings route itself or an API root such
+    as ``http://localhost:8001/v1``.  This backend never starts or manages a
+    model server.  Authentication is optional because local servers may not
+    require it; when supplied, the key is only read at invocation time.
+    """
 
     name = "openai-compatible"
 
-    def __init__(self, endpoint: str, model: str, api_key: str, dimension: int | None = None) -> None:
-        self.endpoint, self.model, self.api_key, self.dimension = endpoint, model, api_key, dimension or 0
+    def __init__(self, endpoint: str, model: str, api_key: str | None = None, dimension: int | None = None) -> None:
+        self.endpoint = normalize_embeddings_endpoint(endpoint)
+        self.model, self.api_key, self.dimension = model, api_key, dimension or 0
 
     def embed(self, texts: list[str]) -> list[list[float]]:
         payload = json.dumps({"model": self.model, "input": texts}).encode("utf-8")
-        request = urllib.request.Request(self.endpoint, data=payload, method="POST", headers={"Authorization": f"Bearer {self.api_key}", "Content-Type": "application/json"})
+        headers = {"Content-Type": "application/json"}
+        if self.api_key:
+            headers["Authorization"] = f"Bearer {self.api_key}"
+        request = urllib.request.Request(self.endpoint, data=payload, method="POST", headers=headers)
         with urllib.request.urlopen(request, timeout=60) as response:  # noqa: S310 - caller controls configured endpoint
             result = json.loads(response.read().decode("utf-8"))
         vectors = [list(item["embedding"]) for item in sorted(result["data"], key=lambda item: item["index"])]
@@ -66,17 +77,28 @@ class OpenAICompatibleBackend:
         return vectors
 
 
+def normalize_embeddings_endpoint(endpoint: str) -> str:
+    """Accept an OpenAI-compatible API root or its explicit embeddings route."""
+    parsed = urlsplit(endpoint.strip())
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+        raise ValueError("Embedding endpoint must be an absolute http(s) URL")
+    path = parsed.path.rstrip("/")
+    if not path.endswith("/embeddings"):
+        path = f"{path}/embeddings" if path else "/embeddings"
+    return urlunsplit((parsed.scheme, parsed.netloc, path, "", ""))
+
+
 def backend_from_environment() -> EmbeddingBackend:
-    kind = os.getenv("REBIRTH_EMBEDDING_KIND", "hash")
+    kind = os.getenv("REBIRTH_EMBEDDING_KIND", "hash").lower()
     endpoint, model, key = (os.getenv("REBIRTH_EMBEDDING_ENDPOINT"), os.getenv("REBIRTH_EMBEDDING_MODEL"), os.getenv("REBIRTH_EMBEDDING_API_KEY"))
     if kind == "hash":
         if endpoint or model or key:
-            raise ValueError("Set REBIRTH_EMBEDDING_KIND=llama.cpp when configuring an embedding endpoint")
+            raise ValueError("Set REBIRTH_EMBEDDING_KIND=openai-compatible when configuring an embedding endpoint")
         return HashEmbeddingBackend()
-    if kind != "llama.cpp":
+    if kind not in {"openai-compatible", "llama.cpp"}:
         raise ValueError(f"Unsupported embedding backend: {kind}")
-    if not all((endpoint, model, key)):
-        raise ValueError("llama.cpp embedding requires ENDPOINT, MODEL and API_KEY")
+    if not all((endpoint, model)):
+        raise ValueError("OpenAI-compatible embedding requires ENDPOINT and MODEL")
     return OpenAICompatibleBackend(endpoint, model, key)
 
 
