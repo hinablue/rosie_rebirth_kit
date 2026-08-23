@@ -4,7 +4,7 @@ import json
 
 import pytest
 
-from scripts.build_index import HashEmbeddingBackend, OpenAICompatibleBackend, backend_from_environment, build_index, chunk_text, normalize_embeddings_endpoint
+from scripts.build_index import HashEmbeddingBackend, OpenAICompatibleBackend, backend_from_environment, build_index, chunk_text, embed_batched, normalize_embeddings_endpoint
 
 
 def test_chunking_and_index_are_deterministic(tmp_path: Path) -> None:
@@ -17,6 +17,29 @@ def test_chunking_and_index_are_deterministic(tmp_path: Path) -> None:
     assert first["index_sha256"] == second["index_sha256"]
     assert first["dimension"] == 16
     assert len(first["chunks"]) == 1
+
+
+def test_embed_batched_preserves_order_and_bounded_requests() -> None:
+    class Recorder:
+        name = "recorder"
+        dimension = 1
+
+        def __init__(self) -> None:
+            self.calls: list[list[str]] = []
+
+        def embed(self, texts: list[str]) -> list[list[float]]:
+            self.calls.append(texts)
+            return [[float(len(text))] for text in texts]
+
+    backend = Recorder()
+    assert embed_batched(backend, ["a", "bb", "ccc", "dddd", "eeeee"], batch_size=2) == [[1.0], [2.0], [3.0], [4.0], [5.0]]
+    assert backend.calls == [["a", "bb"], ["ccc", "dddd"], ["eeeee"]]
+
+
+@pytest.mark.parametrize("batch_size", [0, -1])
+def test_embed_batched_rejects_invalid_batch_size(batch_size: int) -> None:
+    with pytest.raises(ValueError, match="batch_size"):
+        embed_batched(HashEmbeddingBackend(), ["fixture"], batch_size=batch_size)
 
 
 @pytest.mark.parametrize(

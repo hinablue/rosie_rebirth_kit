@@ -111,16 +111,33 @@ def chunk_text(text: str, *, max_chars: int = 1200, overlap: int = 160) -> list[
     return [normalized[start : start + max_chars] for start in range(0, len(normalized), max_chars - overlap)]
 
 
-def build_index(semantic_dir: Path, backend: EmbeddingBackend) -> dict[str, object]:
+def embed_batched(backend: EmbeddingBackend, texts: list[str], *, batch_size: int) -> list[list[float]]:
+    """Embed bounded batches so large archives do not create one giant request."""
+    if batch_size < 1:
+        raise ValueError("batch_size must be >= 1")
+    vectors: list[list[float]] = []
+    for start in range(0, len(texts), batch_size):
+        batch = texts[start : start + batch_size]
+        embedded = backend.embed(batch)
+        if len(embedded) != len(batch):
+            raise ValueError("Embedding provider returned an unexpected vector count")
+        vectors.extend(embedded)
+    return vectors
+
+
+def build_index(semantic_dir: Path, backend: EmbeddingBackend, *, batch_size: int = 64) -> dict[str, object]:
     chunks: list[dict[str, object]] = []
     texts: list[str] = []
-    for card_path in sorted(semantic_dir.rglob("*.semantic.md")):
+    card_paths = sorted(
+        [*semantic_dir.rglob("*.semantic.md"), *semantic_dir.rglob("*.capability.md")]
+    )
+    for card_path in card_paths:
         markdown = read_markdown(card_path)
         metadata, body = split_frontmatter(markdown)
         for number, text in enumerate(chunk_text(body)):
             chunks.append({"id": f"{metadata.get('id', card_path.stem)}#{number}", "card_path": card_path.relative_to(semantic_dir).as_posix(), "source_sha256": metadata.get("source_sha256"), "trust_tier": metadata.get("trust_tier", "T3_untrusted"), "text": text})
             texts.append(text)
-    vectors = backend.embed(texts) if texts else []
+    vectors = embed_batched(backend, texts, batch_size=batch_size) if texts else []
     for chunk, vector in zip(chunks, vectors, strict=True):
         chunk["vector"] = vector
     payload: dict[str, object] = {"schema_version": 1, "backend": backend.name, "dimension": backend.dimension, "chunks": chunks}
@@ -129,7 +146,8 @@ def build_index(semantic_dir: Path, backend: EmbeddingBackend) -> dict[str, obje
 
 
 def run(semantic_dir: Path, index_dir: Path, *, backend: EmbeddingBackend | None = None, dry_run: bool = False) -> dict[str, object]:
-    result = build_index(semantic_dir, backend or backend_from_environment())
+    batch_size = int(os.getenv("REBIRTH_EMBEDDING_BATCH_SIZE", "64"))
+    result = build_index(semantic_dir, backend or backend_from_environment(), batch_size=batch_size)
     if not dry_run:
         write_json(index_dir / "index.json", result)
     return result

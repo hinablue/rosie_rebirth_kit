@@ -29,15 +29,21 @@ def default_tier(path: Path) -> str:
     return "T2_observed"
 
 
-def inventory(source_root: Path, *, trust_overrides: dict[str, str] | None = None) -> dict[str, object]:
-    """Return deterministic source metadata. Symlinks and non-text files are excluded."""
+def inventory(
+    source_root: Path,
+    *,
+    trust_overrides: dict[str, str] | None = None,
+    exclude_dirs: frozenset[str] | None = None,
+) -> dict[str, object]:
+    """Return deterministic source metadata with caller-selected directory exclusions."""
     root = source_root.resolve()
     if not root.is_dir():
         raise NotADirectoryError(root)
     overrides = trust_overrides or {}
+    ignored_parts = IGNORED_PARTS | (exclude_dirs or frozenset())
     records: list[dict[str, object]] = []
     for path in sorted(root.rglob("*")):
-        if not path.is_file() or path.is_symlink() or any(part in IGNORED_PARTS for part in path.parts):
+        if not path.is_file() or path.is_symlink() or any(part in ignored_parts for part in path.parts):
             continue
         if path.suffix.lower() not in TEXT_SUFFIXES:
             continue
@@ -62,8 +68,14 @@ def inventory(source_root: Path, *, trust_overrides: dict[str, str] | None = Non
     return {"schema_version": 1, "source_root_label": root.name, "sources": records}
 
 
-def run(source_root: Path, output: Path, *, trust_overrides: dict[str, str] | None = None) -> dict[str, object]:
+def run(
+    source_root: Path,
+    output: Path,
+    *,
+    trust_overrides: dict[str, str] | None = None,
+    exclude_dirs: frozenset[str] | None = None,
+) -> dict[str, object]:
     require_within(output.parent, output)
-    manifest = inventory(source_root, trust_overrides=trust_overrides)
+    manifest = inventory(source_root, trust_overrides=trust_overrides, exclude_dirs=exclude_dirs)
     write_json(output, manifest)
     return manifest

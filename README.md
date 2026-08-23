@@ -16,7 +16,9 @@
 
 ## 資料處理流程
 
-實際資料的 inventory 與 semanticize 行為、限制與安全邊界見：[Inventory 與 Semanticize 流程](docs/source-inventory-semanticization.md)。
+- 實際資料的 inventory 與 semanticize 行為、限制與安全邊界見：[Inventory 與 Semanticize 流程](docs/source-inventory-semanticization.md)。
+- 已完成索引後，如何安全實作唯讀、帶引用的檢索層，見：[Retrieval Next Steps](docs/retrieval-next-steps.md)。
+- 將 caller-selected Skills / Tools 轉成可審閱、不可直接執行的 capability cards，見：[Capability Archive](docs/capability-archive.md)。
 
 ## CLI
 

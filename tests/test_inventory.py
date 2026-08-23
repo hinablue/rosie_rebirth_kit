@@ -21,3 +21,12 @@ def test_inventory_writes_only_manifest(tmp_path: Path) -> None:
     run(tmp_path, output)
     assert output.is_file()
     assert (tmp_path / "SOUL.md").read_text(encoding="utf-8") == "# Soul\n"
+
+
+def test_inventory_accepts_caller_selected_directory_exclusions(tmp_path: Path) -> None:
+    (tmp_path / "include.md").write_text("keep", encoding="utf-8")
+    excluded = tmp_path / "_system"
+    excluded.mkdir()
+    (excluded / "ignore.md").write_text("skip", encoding="utf-8")
+    result = inventory(tmp_path, exclude_dirs=frozenset({"_system"}))
+    assert [record["relative_path"] for record in result["sources"]] == ["include.md"]

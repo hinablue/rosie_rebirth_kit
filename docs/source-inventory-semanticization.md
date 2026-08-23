@@ -9,6 +9,8 @@
 ```bash
 python -m scripts.rebirth_cli inventory \
   --source /明確指定的來源目錄 \
+  --exclude-name .obsidian \
+  --exclude-name .livesync \
   --output /明確指定的archive/derived/sources.json
 
 python -m scripts.rebirth_cli semanticize \
@@ -30,6 +32,7 @@ python -m scripts.rebirth_cli semanticize \
 - 排除 symbolic link，避免來源目錄連結到 workspace 外部或系統檔。
 - 排除 binary 與未列在白名單的格式。
 - 排除 `.git`、`.venv`、`__pycache__`、`.pytest_cache`、`indexes`、`runtime` 等版本控制、環境、快取與派生內容。
+- 可用可重複指定的 `--exclude-name NAME`（舊名 `--exclude-dir` 仍可用）排除名稱相符的檔案或目錄元件，例如 `.obsidian`、`.livesync`、`.livesync-snapshot.json` 或 `_system`。這些 caller-selected exclusions 與預設排除規則會一併生效。
 
 ### 每筆來源記錄
 
