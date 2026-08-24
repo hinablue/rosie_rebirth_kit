@@ -4,3 +4,6 @@ __pycache__/
 .env
 indexes/embedding-v*/
 runtime/*.json
+node_modules
+dist
+frontend/.astro/

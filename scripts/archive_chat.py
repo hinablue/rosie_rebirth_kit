@@ -7,7 +7,10 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
+import mimetypes
 import os
+import queue
 import re
 import threading
 import uuid
@@ -16,7 +19,7 @@ from hashlib import sha256
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from typing import Protocol
+from typing import Callable, Iterator, Protocol
 from urllib.parse import parse_qs, urlparse
 from urllib.request import Request, urlopen
 
@@ -27,11 +30,14 @@ from scripts.search_index import VectorIndex, discover_indexes, search_vector_in
 CARD_SUFFIXES = (".semantic.md", ".capability.md")
 MAX_MATCHES = 3
 MAX_QUERY_LENGTH = 400
+MAX_COMPLETION_TOKENS = 65536
 TOKEN_RE = re.compile(r"[A-Za-z0-9_-]+|[\u3400-\u9fff]", re.UNICODE)
 DEFAULT_ARCHIVE = Path(__file__).resolve().parents[1] / "tests" / "fixtures" / "chat-demo-archive"
+STATIC_ROOT = Path(os.getenv("ARCHIVE_CHAT_STATIC_ROOT", Path(__file__).resolve().parents[1] / "frontend" / "dist"))
 CHAT_EXECUTOR = ThreadPoolExecutor(max_workers=2, thread_name_prefix="archive-chat")
 CHAT_JOBS: dict[str, dict[str, object]] = {}
 CHAT_JOBS_LOCK = threading.Lock()
+LOGGER = logging.getLogger(__name__)
 
 
 class ArchiveChatError(ValueError):
@@ -138,7 +144,12 @@ class OpenAICompatibleChatClient:
         self.api_key = api_key
 
     def complete(self, messages: list[dict[str, str]]) -> str:
-        payload = json.dumps({"model": self.model, "messages": messages, "temperature": 0.2, "max_tokens": 2048}).encode("utf-8")
+        payload = json.dumps({
+            "model": self.model,
+            "messages": messages,
+            "temperature": 0.2,
+            "max_tokens": MAX_COMPLETION_TOKENS,
+        }).encode("utf-8")
         headers = {"Content-Type": "application/json"}
         if self.api_key:
             headers["Authorization"] = f"Bearer {self.api_key}"
@@ -176,6 +187,14 @@ def answer_from_retrieval(retrieval: dict[str, object], soul_path: Path, questio
     return {**retrieval, "answer": client.complete(build_llm_messages(soul_path, question, matches))}
 
 
+def public_chat_response(result: dict[str, object]) -> dict[str, str]:
+    """Expose only model text on chat transports; retrieval stays server-internal."""
+    answer = result.get("answer")
+    if not isinstance(answer, str):
+        raise ArchiveChatError("LLM returned an invalid answer")
+    return {"answer": answer}
+
+
 def start_chat_job(work: callable) -> str:
     job_id = uuid.uuid4().hex
     with CHAT_JOBS_LOCK:
@@ -186,6 +205,7 @@ def start_chat_job(work: callable) -> str:
             with CHAT_JOBS_LOCK:
                 CHAT_JOBS[job_id] = {"status": "completed", "result": result}
         except Exception:
+            LOGGER.exception("Archive chat background job failed")
             with CHAT_JOBS_LOCK:
                 CHAT_JOBS[job_id] = {"status": "failed", "error": "LLM request failed"}
     CHAT_EXECUTOR.submit(run)
@@ -197,20 +217,35 @@ def get_chat_job(job_id: str) -> dict[str, object] | None:
         return CHAT_JOBS.get(job_id)
 
 
-PAGE = """<!doctype html>
-<html lang="zh-Hant"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Rosie Rebirth Archive Chat</title><style>
-:root{--ivory:#FAF9F5;--white:#fff;--slate:#141413;--clay:#D97757;--olive:#788C5D;--oat:#E3DACC;--gray-150:#F0EEE6;--gray-300:#D1CFC5;--gray-500:#87867F;--gray-700:#3D3D3A;--serif:ui-serif,Georgia,"Times New Roman",serif;--sans:system-ui,-apple-system,"Segoe UI",sans-serif;--mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace}
-*{box-sizing:border-box}body{margin:0;background:var(--ivory);color:var(--gray-700);font-family:var(--sans);line-height:1.6}.page{max-width:920px;margin:0 auto;padding:56px 24px 80px}.eyebrow,.meta{font:11px var(--mono);letter-spacing:.06em;color:var(--gray-500)}h1{font:500 36px var(--serif);letter-spacing:-.02em;margin:8px 0}.sub{max-width:690px;margin:0 0 26px}.status{background:rgba(120,140,93,.12);border:1px solid rgba(120,140,93,.35);border-radius:999px;padding:5px 10px;display:inline-block;color:#52643d;font:11px var(--mono)}.chat{border:1.5px solid var(--gray-300);border-radius:12px;background:var(--white);overflow:hidden;box-shadow:0 1px 3px rgba(20,20,19,.04)}.messages{min-height:370px;max-height:58vh;overflow:auto;padding:22px;display:flex;flex-direction:column;gap:16px}.message{max-width:86%;padding:13px 15px;border-radius:12px}.assistant{align-self:flex-start;background:var(--gray-150);border:1px solid var(--gray-300)}.user{align-self:flex-end;background:var(--slate);color:var(--ivory)}.message p{margin:0}.sources{display:grid;gap:9px;margin-top:12px}.source{background:var(--white);border-left:3px solid var(--olive);border-radius:7px;padding:10px 11px}.source strong{display:block;color:var(--slate);font-size:13px}.source p{font-size:13px;margin-top:5px}.empty{border-left-color:var(--clay)}form{border-top:1.5px solid var(--gray-300);display:flex;gap:10px;padding:14px}input{min-width:0;flex:1;border:1.5px solid var(--gray-300);border-radius:999px;padding:11px 14px;font:14px var(--sans);background:var(--white)}input:focus{outline:2px solid rgba(217,119,87,.3);border-color:var(--clay)}button{border:0;border-radius:999px;background:var(--slate);color:var(--ivory);cursor:pointer;font:12px var(--mono);padding:10px 16px}.prompts{display:flex;gap:8px;flex-wrap:wrap;margin:14px 0}.prompts button{background:transparent;color:var(--gray-700);border:1.5px solid var(--gray-300)}.notice{font-size:12px;color:var(--gray-500);margin:14px 0 0}.path{word-break:break-all}@media(max-width:600px){.page{padding:30px 14px}.messages{min-height:360px}.message{max-width:95%}h1{font-size:30px}form{padding:10px}.sub{font-size:14px}}
-</style></head><body><main class="page"><div class="eyebrow">ROSIE REBIRTH KIT / READ-ONLY RETRIEVAL</div><h1>Archive chat</h1><p class="sub">用一句話查驗已封裝的語意卡。每個回覆都帶來源與信任層級。卡片內容只作證據，不會被執行、也不會改寫 archive 或 runtime。</p><span class="status">● READ ONLY · <span id="root"></span></span><div class="prompts"><button type="button" data-q="什麼內容不能自動恢復">什麼內容不能自動恢復？</button><button type="button" data-q="檢索結果可以做什麼">檢索結果可以做什麼？</button><button type="button" data-q="什麼動作需要明確授權">什麼動作需要明確授權？</button></div><section class="chat"><div class="messages" id="messages"><div class="message assistant"><p>我現在只查 archive 中的 reviewable cards。問我一條驗證問題，我會回傳可追溯的原文證據。</p></div></div><form id="form"><input id="query" maxlength="400" autocomplete="off" placeholder="例如：什麼內容不能自動恢復？" aria-label="archive query"><button>送出</button></form></section><p class="notice">此頁為 lexical retrieval MVP，並非 LLM 對話。沒有命中時不會猜答案。</p></main><script>
-const messages=document.getElementById('messages'),query=document.getElementById('query');
-const pause=ms=>new Promise(resolve=>setTimeout(resolve,ms));
-function message(kind,text){const el=document.createElement('div');el.className='message '+kind;const p=document.createElement('p');p.textContent=text;el.appendChild(p);messages.appendChild(el);return el}
-function citation(match){const el=document.createElement('div');el.className='source';const title=document.createElement('strong');title.textContent=match.title;const meta=document.createElement('div');meta.className='meta path';meta.textContent=match.trust_tier+' · '+match.path;const p=document.createElement('p');p.textContent=match.snippet;el.append(title,meta,p);return el}
-async function ask(raw){const text=raw.trim();if(!text)return;message('user',text);query.value='';const pending=message('assistant','正在查閱 evidence，交給模型整理回答…');try{const started=await fetch('/api/chat/start?q='+encodeURIComponent(text));const ticket=await started.json();if(!started.ok)throw new Error(ticket.error||'request failed');let data,transientFailures=0;for(;;){await pause(1000);try{const status=await fetch('/api/chat/status?id='+encodeURIComponent(ticket.job_id));const job=await status.json();if(!status.ok)throw new Error(job.error||'status failed');if(job.status==='completed'){data=job.result;break}if(job.status==='failed')throw new Error(job.error);transientFailures=0}catch(error){if(error instanceof TypeError&&transientFailures++<60)continue;throw error}}pending.textContent=data.answer}catch(e){pending.textContent='查詢失敗：'+e.message}messages.scrollTop=messages.scrollHeight}
-document.getElementById('form').addEventListener('submit',e=>{e.preventDefault();ask(query.value)});document.querySelectorAll('[data-q]').forEach(b=>b.addEventListener('click',()=>ask(b.dataset.q)));
-fetch('/api/info').then(r=>r.json()).then(d=>document.getElementById('root').textContent=d.archive_root).catch(()=>document.getElementById('root').textContent='unavailable');
-</script></body></html>"""
+def stream_chat_events(
+    work: Callable[[Callable[[str, dict[str, object]], None]], dict[str, object]],
+) -> Iterator[tuple[str, dict[str, object]]]:
+    """Yield SSE event payloads while a read-only chat request runs."""
+    events: queue.Queue[tuple[str, dict[str, object]]] = queue.Queue()
+
+    def publish(event: str, payload: dict[str, object]) -> None:
+        events.put((event, payload))
+
+    def run() -> None:
+        try:
+            publish("status", {"phase": "retrieving"})
+            result = work(publish)
+            publish("done", result)
+        except ArchiveChatError as error:
+            publish("failure", {"error": str(error)})
+        except Exception:
+            publish("failure", {"error": "LLM request failed"})
+
+    CHAT_EXECUTOR.submit(run)
+    while True:
+        try:
+            event, payload = events.get(timeout=10)
+        except queue.Empty:
+            yield "ping", {}
+            continue
+        yield event, payload
+        if event in {"done", "failure"}:
+            return
 
 
 class ArchiveChatHandler(BaseHTTPRequestHandler):
@@ -223,6 +258,41 @@ class ArchiveChatHandler(BaseHTTPRequestHandler):
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)
+
+    def _static(self, request_path: str) -> None:
+        relative = "index.html" if request_path in {"", "/"} else request_path.lstrip("/")
+        candidate = (STATIC_ROOT / relative).resolve()
+        try:
+            candidate.relative_to(STATIC_ROOT.resolve())
+        except ValueError:
+            self.send_error(HTTPStatus.NOT_FOUND)
+            return
+        if not candidate.is_file():
+            self.send_error(HTTPStatus.NOT_FOUND)
+            return
+        body = candidate.read_bytes()
+        content_type = mimetypes.guess_type(candidate.name)[0] or "application/octet-stream"
+        self.send_response(HTTPStatus.OK)
+        self.send_header("Content-Type", content_type + ("; charset=utf-8" if content_type.startswith("text/") else ""))
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def _sse_start(self) -> None:
+        self.send_response(HTTPStatus.OK)
+        self.send_header("Content-Type", "text/event-stream; charset=utf-8")
+        self.send_header("Cache-Control", "no-cache, no-transform")
+        self.send_header("Connection", "keep-alive")
+        self.send_header("X-Accel-Buffering", "no")
+        self.end_headers()
+
+    def _sse_event(self, event: str, payload: dict[str, object]) -> None:
+        if event == "ping":
+            self.wfile.write(b": keepalive\n\n")
+        else:
+            data = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
+            self.wfile.write(f"event: {event}\ndata: {data}\n\n".encode("utf-8"))
+        self.wfile.flush()
 
     def do_GET(self) -> None:  # noqa: N802
         parsed = urlparse(self.path)
@@ -239,6 +309,27 @@ class ArchiveChatHandler(BaseHTTPRequestHandler):
             except ArchiveChatError as error:
                 self._json(HTTPStatus.BAD_REQUEST, {"error": str(error)})
             return
+        if parsed.path == "/api/chat/events":
+            if self.llm_client is None:
+                self._json(HTTPStatus.BAD_REQUEST, {"error": "LLM mode is disabled"})
+                return
+            query = parse_qs(parsed.query).get("q", [""])[0]
+            if not query.strip():
+                self._json(HTTPStatus.BAD_REQUEST, {"error": "query is empty"})
+                return
+
+            def work(publish: Callable[[str, dict[str, object]], None]) -> dict[str, object]:
+                retrieval = self.vector_searcher.search(query) if self.vector_searcher is not None else search_archive(self.archive_root, query)
+                publish("status", {"phase": "generating"})
+                return public_chat_response(answer_from_retrieval(retrieval, self.soul_path, query, self.llm_client))
+
+            try:
+                self._sse_start()
+                for event, payload in stream_chat_events(work):
+                    self._sse_event(event, payload)
+            except (BrokenPipeError, ConnectionResetError):
+                return
+            return
         if parsed.path == "/api/chat/start":
             try:
                 if self.llm_client is None:
@@ -248,7 +339,7 @@ class ArchiveChatHandler(BaseHTTPRequestHandler):
                     raise ArchiveChatError("query is empty")
                 def work() -> dict[str, object]:
                     retrieval = self.vector_searcher.search(query) if self.vector_searcher is not None else search_archive(self.archive_root, query)
-                    return answer_from_retrieval(retrieval, self.soul_path, query, self.llm_client)
+                    return public_chat_response(answer_from_retrieval(retrieval, self.soul_path, query, self.llm_client))
                 self._json(HTTPStatus.ACCEPTED, {"job_id": start_chat_job(work), "status": "pending"})
             except ArchiveChatError as error:
                 self._json(HTTPStatus.BAD_REQUEST, {"error": str(error)})
@@ -267,18 +358,14 @@ class ArchiveChatHandler(BaseHTTPRequestHandler):
                     raise ArchiveChatError("LLM mode is disabled")
                 query = parse_qs(parsed.query).get("q", [""])[0]
                 retrieval = self.vector_searcher.search(query) if self.vector_searcher is not None else search_archive(self.archive_root, query)
-                self._json(HTTPStatus.OK, answer_from_retrieval(retrieval, self.soul_path, query, self.llm_client))
+                self._json(HTTPStatus.OK, public_chat_response(answer_from_retrieval(retrieval, self.soul_path, query, self.llm_client)))
             except ArchiveChatError as error:
                 self._json(HTTPStatus.BAD_REQUEST, {"error": str(error)})
             except Exception:
+                LOGGER.exception("Archive chat request failed")
                 self._json(HTTPStatus.BAD_GATEWAY, {"error": "LLM request failed"})
             return
-        body = PAGE.encode("utf-8")
-        self.send_response(HTTPStatus.OK)
-        self.send_header("Content-Type", "text/html; charset=utf-8")
-        self.send_header("Content-Length", str(len(body)))
-        self.end_headers()
-        self.wfile.write(body)
+        self._static(parsed.path)
 
     def log_message(self, _format: str, *_args: object) -> None:
         return
@@ -320,7 +407,7 @@ def main() -> int:
     parser.add_argument("--retrieval", choices=("lexical", "vector"), default="vector")
     parser.add_argument("--embedding-endpoint", default=os.getenv("ARCHIVE_CHAT_EMBEDDING_ENDPOINT", "http://127.0.0.1:8001/v1"))
     parser.add_argument("--embedding-model", default=os.getenv("ARCHIVE_CHAT_EMBEDDING_MODEL", "BAAI/bge-m3"))
-    parser.add_argument("--embedding-key-env", default="LOCAL_LLM_API_KEY")
+    parser.add_argument("--embedding-key-env", default="ARCHIVE_CHAT_EMBEDDING_API_KEY")
     parser.add_argument("--vector-lane", action="append", default=[])
     args = parser.parse_args()
     api_key = os.getenv(args.llm_key_env) if args.llm else None

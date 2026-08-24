@@ -4,14 +4,15 @@
 
 ## 範圍
 
-`docker-compose.yml` 只啟動 `archive-chat`。它不管理模型、不建立 embedding server、不改寫 archive，也不擁有任何原始資料。
+`docker-compose.yml` 只啟動 `archive-chat`。它以 Docker multi-stage build 將 `frontend/` 的 Astro static site 打包為 `/app/static`，再由 Python API server 提供；它不管理模型、不建立 embedding server、不改寫 archive，也不擁有任何原始資料。
 
 | 資源 | 擁有者 | Container 接法 |
 | --- | --- | --- |
 | Rebirth archive | 外部檔案系統 | `${ARCHIVE_PATH}` → `/archive:ro` |
 | Chat LLM | 主機既有 OpenAI-compatible service | `127.0.0.1:8000/v1` |
 | Embedding service | 主機既有 OpenAI-compatible service | `127.0.0.1:8001/v1` |
-| API key | host shell 或未提交 `.env` | `LOCAL_LLM_API_KEY` environment |
+| Chat LLM API key | host shell 或未提交 `.env` | `LOCAL_LLM_API_KEY` environment |
+| Embedding API key | host shell 或未提交 `.env` | `ARCHIVE_CHAT_EMBEDDING_API_KEY` environment |
 
 Compose 使用 Linux `network_mode: host`，所以 container 內的 `127.0.0.1:8000`／`8001` 直接指向 Docker host 上既有服務。這不是在 container 裡啟動 LLM 或 embedding，也因此沒有 Compose `ports:` mapping，chat 直接使用主機的 `8765`。
 
@@ -20,24 +21,26 @@ Compose 使用 Linux `network_mode: host`，所以 container 內的 `127.0.0.1:8
 1. 實際 archive 已完成檢查，並有 `identity/source/SOUL.md` 和各 lane 的 `indexes/index.json`。
 2. 主機的 chat service 已可用：`http://127.0.0.1:8000/v1`。
 3. 主機的 embedding service 已可用：`http://127.0.0.1:8001/v1`，模型為與 index 相同的 `BAAI/bge-m3`，維度 `1024`。
-4. `LOCAL_LLM_API_KEY` 可同時對兩個服務認證。
-5. Docker Engine / Compose 已可用。
+4. `LOCAL_LLM_API_KEY` 可對 chat LLM 認證。
+5. `ARCHIVE_CHAT_EMBEDDING_API_KEY` 可對 host 的 `8001/v1/embeddings` 認證。
+6. Docker Engine / Compose 已可用。
 
 ## 設定
 
 ```bash
 cd /home/hina/Workspace/rosie_rebirth_kit
 cp .env.example .env
-# 在 .env 填入 LOCAL_LLM_API_KEY，依實際位置確認 ARCHIVE_PATH
+# 在 .env 分別填入 chat LLM 與 embedding 的 API key，依實際位置確認 ARCHIVE_PATH
 ```
 
-`.env` 不可提交。它唯一存放本機 API key 與外部 host endpoint 的覆寫值。
+`.env` 不可提交。它存放 chat LLM、embedding service 各自的 API key 與外部 host endpoint 的覆寫值。
 
 最小必要設定：
 
 ```dotenv
 ARCHIVE_PATH=/home/hina/Workspace/rosie_rebirth_archive
-LOCAL_LLM_API_KEY=replace-with-local-key
+LOCAL_LLM_API_KEY=replace-with-chat-llm-key
+ARCHIVE_CHAT_EMBEDDING_API_KEY=replace-with-local-embedding-key
 ```
 
 ## 啟動與更新
@@ -112,7 +115,7 @@ docker compose down
 | 症狀 | 檢查 |
 | --- | --- |
 | Container 一直 starting | `docker compose logs archive-chat`；初次載入 760 MB openviking index 需要時間。 |
-| Embedding 401 / 502 | 檢查 `.env` 的 `LOCAL_LLM_API_KEY`，以及 host 的 `8001/v1/embeddings`。 |
+| Embedding 401 / 502 | 檢查 `.env` 的 `ARCHIVE_CHAT_EMBEDDING_API_KEY`，以及 host 的 `8001/v1/embeddings`。 |
 | Query dimension mismatch | index 與 embedding model 必須都是 BGE-M3 1024 維，不能改用 chat model。 |
 | host endpoint 連不上 | 這個 stack 使用 Linux host networking。確認 host 自己的 `127.0.0.1:8000/v1` 與 `127.0.0.1:8001/v1` 可用。 |
 | Archive 找不到 SOUL | 確認 `${ARCHIVE_PATH}/identity/source/SOUL.md` 存在且 mount 為唯讀。 |

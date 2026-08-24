@@ -1,0 +1,12 @@
+{
+  "name": "rosie-rebirth-archive-chat-ui",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "build": "astro build"
+  },
+  "devDependencies": {
+    "astro": "^5.7.0"
+  }
+}

@@ -1,0 +1,224 @@
+---
+const title = "Rosie Rebirth Archive Chat";
+---
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{title}</title>
+    <style is:global>
+      :root{--ivory:#faf9f5;--white:#fff;--slate:#141413;--clay:#d97757;--olive:#788c5d;--gray-150:#f0eee6;--gray-300:#d1cfc5;--gray-500:#87867f;--gray-700:#3d3d3a;--serif:ui-serif,Georgia,"Times New Roman",serif;--sans:system-ui,-apple-system,"Segoe UI",sans-serif;--mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace}
+      *{box-sizing:border-box}body{margin:0;background:var(--ivory);color:var(--gray-700);font-family:var(--sans);line-height:1.6}.page{max-width:920px;margin:0 auto;padding:56px 24px 80px}.eyebrow,.meta{font:11px var(--mono);letter-spacing:.06em;color:var(--gray-500)}h1{font:500 36px var(--serif);letter-spacing:-.02em;margin:8px 0}.sub{max-width:690px;margin:0 0 26px}.status{background:rgba(120,140,93,.12);border:1px solid rgba(120,140,93,.35);border-radius:999px;padding:5px 10px;display:inline-block;color:#52643d;font:11px var(--mono)}.chat{border:1.5px solid var(--gray-300);border-radius:12px;background:var(--white);overflow:hidden;box-shadow:0 1px 3px rgba(20,20,19,.04)}.messages{min-height:370px;max-height:58vh;overflow:auto;padding:22px;display:flex;flex-direction:column;gap:16px}.message{max-width:86%;border:1.5px solid var(--gray-300);border-radius:12px;overflow:visible;overflow-wrap:anywhere;background:var(--white)}.message-label{padding:6px 13px;border-bottom:1px solid var(--gray-300);border-radius:10px 10px 0 0;font:11px var(--mono);letter-spacing:.06em;color:var(--gray-500);background:rgba(120,140,93,.08)}.message-body,.message>.content{display:block;padding:13px 15px;border-radius:0 0 10px 10px}.assistant{align-self:flex-start;background:var(--gray-150)}.assistant .message-label{background:rgba(120,140,93,.12)}.user{align-self:flex-end;background:var(--slate);border-color:var(--slate);color:var(--ivory)}.user .message-label{color:rgba(250,249,245,.75);border-color:rgba(250,249,245,.2);background:rgba(255,255,255,.08)}.content>*:first-child{margin-top:0}.content>*:last-child{margin-bottom:0}.content h1,.content h2,.content h3{font-family:var(--serif);line-height:1.3;margin:1rem 0 .5rem}.content h1{font-size:1.45rem}.content h2{font-size:1.25rem}.content h3{font-size:1.1rem}.content blockquote{border-left:3px solid var(--olive);margin:.75rem 0;padding:.15rem 0 .15rem .75rem;color:var(--gray-500)}.content ul{padding-left:1.2rem;margin:.6rem 0}.content pre{overflow:auto;background:var(--slate);color:var(--ivory);border-radius:8px;padding:12px;font:12px var(--mono);white-space:pre-wrap}.content code{font:12px var(--mono);background:rgba(120,140,93,.16);border-radius:4px;padding:1px 4px}.content pre code{background:none;padding:0}.content a{color:#9a3e23}.content p{margin:.65rem 0}.content strong{color:inherit}.user .content{color:var(--ivory)}form{border-top:1.5px solid var(--gray-300);display:flex;gap:10px;padding:14px}input{min-width:0;flex:1;border:1.5px solid var(--gray-300);border-radius:999px;padding:11px 14px;font:14px var(--sans);background:var(--white)}input:focus{outline:2px solid rgba(217,119,87,.3);border-color:var(--clay)}button{border:0;border-radius:999px;background:var(--slate);color:var(--ivory);cursor:pointer;font:12px var(--mono);padding:10px 16px;transition:opacity .15s,background .15s}button:disabled,input:disabled{cursor:not-allowed;opacity:.58}.prompts{display:flex;gap:8px;flex-wrap:wrap;margin:14px 0}.prompts button{background:transparent;color:var(--gray-700);border:1.5px solid var(--gray-300)}.notice{font-size:12px;color:var(--gray-500);margin:14px 0 0}@media(max-width:600px){.page{padding:30px 14px}.messages{min-height:360px}.message{max-width:95%}h1{font-size:30px}form{padding:10px}.sub{font-size:14px}}
+    </style>
+    <style is:global>.clear-history{display:block;margin:18px 0 0 auto;background:transparent;color:var(--gray-500);border:1.5px solid var(--gray-300)}.name-dialog{border:1.5px solid var(--gray-300);border-radius:14px;box-shadow:0 18px 60px rgba(20,20,19,.22);max-width:400px;padding:0}.name-dialog::backdrop{background:rgba(20,20,19,.35)}.name-dialog form{display:block;border:0;padding:24px}.name-dialog h2{font:500 26px var(--serif);margin:0 0 8px}.name-dialog p{margin:0 0 16px;color:var(--gray-500);font-size:14px}.name-dialog input{width:100%;margin-bottom:12px}.name-dialog button{width:100%}</style>
+  </head>
+  <body>
+    <main class="page">
+      <div class="eyebrow">ROSIE REBIRTH KIT / READ-ONLY RETRIEVAL</div>
+      <h1>Archive chat</h1>
+      <p class="sub">使用語意 archive 與 LLM 回答問題。archive 內容只作證據，不會被執行、也不會改寫 archive 或 runtime。</p>
+      <span class="status">● READ ONLY · <span id="root"></span></span>
+      <div class="prompts" id="prompts">
+        <button type="button" data-q="什麼內容不能自動恢復">什麼內容不能自動恢復？</button>
+        <button type="button" data-q="檢索結果可以做什麼">檢索結果可以做什麼？</button>
+        <button type="button" data-q="什麼動作需要明確授權">什麼動作需要明確授權？</button>
+      </div>
+      <section class="chat">
+        <div class="messages" id="messages"><div class="message assistant"><div class="message-label">Rosie</div><div class="message-body"><div class="content">我會在唯讀 archive 的範圍內，用 LLM 整理成可閱讀的回答。</div></div></div></div>
+        <form id="form">
+          <input id="query" maxlength="400" autocomplete="off" placeholder="例如：什麼內容不能自動恢復？" aria-label="archive query" />
+          <button id="submit" type="submit">送出</button>
+        </form>
+      </section>
+      <p class="notice">回覆由固定 identity、唯讀 archive 與 LLM 組成；沒有相關資料時不會捏造 archive 事實。</p>
+      <button class="clear-history" id="clear-history" type="button">清除對話紀錄</button>
+      <dialog class="name-dialog" id="name-dialog"><form id="name-form" method="dialog"><h2>先認識一下</h2><p>我應該怎麼稱呼你？這個名稱只保存在目前瀏覽器 session。</p><input id="nickname" maxlength="40" autocomplete="name" placeholder="輸入你的暱稱" aria-label="使用者暱稱" required /><button type="submit">開始聊天</button></form></dialog>
+    </main>
+    <script is:inline>
+      const messages = document.getElementById("messages");
+      const query = document.getElementById("query");
+      const form = document.getElementById("form");
+      const button = document.getElementById("submit");
+      const clearHistory = document.getElementById("clear-history");
+      const promptButtons = [...document.querySelectorAll("[data-q]")];
+      const nameDialog = document.getElementById("name-dialog");
+      const nameForm = document.getElementById("name-form");
+      const nickname = document.getElementById("nickname");
+      const PROFILE_KEY = "rosie-rebirth:user-profile:v1";
+      const STORAGE_KEY = "rosie-rebirth:messages:v2";
+      const TTL_MS = 4 * 60 * 60 * 1000;
+      let isSending = false;
+      let displayName = "";
+
+      function escapeHtml(value) {
+        return value.replace(/[&<>"']/g, (character) => ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#039;"}[character]));
+      }
+
+      function renderInline(value) {
+        const escaped = escapeHtml(value);
+        return escaped
+          .replace(/`([^`]+)`/g, "<code>$1</code>")
+          .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
+          .replace(/\*([^*]+)\*/g, "<em>$1</em>")
+          .replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>');
+      }
+
+      function renderMarkdown(value) {
+        const codeBlocks = [];
+        let source = value.replace(/```(?:[A-Za-z0-9_-]+)?\n?([\s\S]*?)```/g, (_, code) => {
+          const key = `@@CODEBLOCK${codeBlocks.length}@@`;
+          codeBlocks.push(`<pre><code>${escapeHtml(code.trim())}</code></pre>`);
+          return key;
+        });
+        const html = source.split("\n").map((line) => {
+          if (/^###\s+/.test(line)) return `<h3>${renderInline(line.slice(4))}</h3>`;
+          if (/^##\s+/.test(line)) return `<h2>${renderInline(line.slice(3))}</h2>`;
+          if (/^#\s+/.test(line)) return `<h1>${renderInline(line.slice(2))}</h1>`;
+          if (/^>\s?/.test(line)) return `<blockquote>${renderInline(line.replace(/^>\s?/, ""))}</blockquote>`;
+          if (/^-\s+/.test(line)) return `<li>${renderInline(line.slice(2))}</li>`;
+          if (!line.trim()) return "<br />";
+          return renderInline(line) + "<br />";
+        }).join("").replace(/(<li>[\s\S]*?<\/li>)+/g, (list) => `<ul>${list}</ul>`);
+        return codeBlocks.reduce((output, code, index) => output.replace(`@@CODEBLOCK${index}@@`, code), html);
+      }
+
+      function message(kind, text, { markdown = false, persist = false } = {}) {
+        const element = document.createElement("div");
+        element.className = "message " + kind;
+        const label = document.createElement("div");
+        label.className = "message-label";
+        label.textContent = kind === "user" ? displayName || "使用者" : "Rosie";
+        const body = document.createElement("div");
+        body.className = "message-body";
+        const content = document.createElement("div");
+        content.className = "content";
+        if (markdown) content.innerHTML = renderMarkdown(text);
+        else content.textContent = text;
+        body.appendChild(content);
+        element.append(label, body);
+        messages.appendChild(element);
+        if (persist) persistMessage(kind, text);
+        messages.scrollTop = messages.scrollHeight;
+        return content;
+      }
+
+      function readMessages() {
+        try {
+          const stored = JSON.parse(sessionStorage.getItem(STORAGE_KEY) || "[]");
+          const cutoff = Date.now() - TTL_MS;
+          const valid = Array.isArray(stored) ? stored.filter((entry) =>
+            (entry?.role === "user" || entry?.role === "assistant") &&
+            typeof entry?.text === "string" && Number.isFinite(entry?.createdAt) && entry.createdAt >= cutoff
+          ) : [];
+          sessionStorage.setItem(STORAGE_KEY, JSON.stringify(valid));
+          return valid;
+        } catch (_) {
+          sessionStorage.removeItem(STORAGE_KEY);
+          return [];
+        }
+      }
+
+      function persistMessage(role, text) {
+        const entries = readMessages();
+        entries.push({ role, text, createdAt: Date.now() });
+        sessionStorage.setItem(STORAGE_KEY, JSON.stringify(entries));
+      }
+
+      function restoreMessages() {
+        readMessages().forEach((entry) => message(entry.role, entry.text));
+        messages.scrollTop = messages.scrollHeight;
+      }
+
+      function loadProfile() {
+        try {
+          const profile = JSON.parse(sessionStorage.getItem(PROFILE_KEY) || "null");
+          return typeof profile?.nickname === "string" ? profile.nickname.trim().slice(0, 40) : "";
+        } catch (_) {
+          sessionStorage.removeItem(PROFILE_KEY);
+          return "";
+        }
+      }
+
+      function requestNickname() {
+        if (!nameDialog.open) nameDialog.showModal();
+        nickname.focus();
+      }
+
+      function setSending(sending) {
+        isSending = sending;
+        query.disabled = sending;
+        button.disabled = sending;
+        button.textContent = sending ? "讀取中…" : "送出";
+        form.setAttribute("aria-busy", String(sending));
+        promptButtons.forEach((prompt) => { prompt.disabled = sending; });
+      }
+
+      function streamAnswer(text, pending) {
+        return new Promise((resolve, reject) => {
+          const source = new EventSource("/api/chat/events?q=" + encodeURIComponent(text));
+          let settled = false;
+          const finish = (callback, value) => {
+            if (settled) return;
+            settled = true;
+            source.close();
+            callback(value);
+          };
+          source.addEventListener("status", (event) => {
+            const data = JSON.parse(event.data);
+            pending.textContent = data.phase === "retrieving" ? "正在查閱 archive..." : "正在整理回答...";
+          });
+          source.addEventListener("done", (event) => finish(resolve, JSON.parse(event.data)));
+          source.addEventListener("failure", (event) => {
+            const data = JSON.parse(event.data);
+            finish(reject, new Error(data.error || "request failed"));
+          });
+          source.onerror = () => finish(reject, new Error("SSE 連線中斷"));
+        });
+      }
+
+      async function ask(raw) {
+        const text = raw.trim();
+        if (!displayName) { requestNickname(); return; }
+        if (!text || isSending) return;
+        setSending(true);
+        message("user", text, { persist: true });
+        query.value = "";
+        const pending = message("assistant", "思考中...");
+        try {
+          const data = await streamAnswer(text, pending);
+          pending.innerHTML = renderMarkdown(data.answer);
+          persistMessage("assistant", data.answer);
+        } catch (error) {
+          pending.textContent = "查詢失敗：" + error.message;
+        } finally {
+          setSending(false);
+          query.focus();
+          messages.scrollTop = messages.scrollHeight;
+        }
+      }
+
+      form.addEventListener("submit", (event) => { event.preventDefault(); ask(query.value); });
+      clearHistory.addEventListener("click", () => {
+        sessionStorage.removeItem(STORAGE_KEY);
+        sessionStorage.removeItem(PROFILE_KEY);
+        location.reload();
+      });
+      promptButtons.forEach((prompt) => prompt.addEventListener("click", () => ask(prompt.dataset.q || "")));
+      nameForm.addEventListener("submit", (event) => {
+        event.preventDefault();
+        const value = nickname.value.trim().slice(0, 40);
+        if (!value) { nickname.focus(); return; }
+        displayName = value;
+        sessionStorage.setItem(PROFILE_KEY, JSON.stringify({ nickname: displayName }));
+        nameDialog.close();
+        restoreMessages();
+        query.focus();
+      });
+      displayName = loadProfile();
+      if (displayName) restoreMessages();
+      else requestNickname();
+      fetch("/api/info").then((response) => response.json()).then((data) => { document.getElementById("root").textContent = data.archive_root; }).catch(() => { document.getElementById("root").textContent = "unavailable"; });
+    </script>
+  </body>
+</html>

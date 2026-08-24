@@ -62,7 +62,7 @@ python -m scripts.archive_chat \
 
 ### Docker Compose
 
-容器化啟動、外部 archive / LLM / embedding 接點、healthcheck 與故障排查請見：[Archive Chat Docker Compose 運維指南](docs/archive-chat-docker-compose.md)。
+容器化啟動、外部 archive / LLM / embedding 接點、Astro static frontend、healthcheck 與故障排查請見：[Archive Chat Docker Compose 運維指南](docs/archive-chat-docker-compose.md)。
 
 ## CLI
 
