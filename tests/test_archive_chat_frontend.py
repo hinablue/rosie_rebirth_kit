@@ -24,6 +24,8 @@ def test_frontend_has_single_request_lock_markdown_and_ttl_storage() -> None:
     assert "message(entry.role, entry.text, { markdown: true })" in source
     assert "new EventSource" in source
     assert "/api/chat/events" in source
+    assert "crypto.randomUUID()" in source
+    assert "conversationSession" in source
     assert "addEventListener(\"done\"" in source
     assert "addEventListener(\"failure\"" in source
     assert "/api/chat/status" not in source
