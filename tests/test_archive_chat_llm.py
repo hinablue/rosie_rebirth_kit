@@ -94,7 +94,7 @@ def test_public_chat_response_excludes_internal_retrieval_evidence() -> None:
 def test_llm_and_embedding_keys_are_read_from_separate_environment_variables(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str],
 ) -> None:
-    monkeypatch.setenv("LOCAL_LLM_API_KEY", "chat-key")
+    monkeypatch.setenv("ARCHIVE_CHAT_LLM_API_KEY", "chat-key")
     monkeypatch.delenv("ARCHIVE_CHAT_EMBEDDING_API_KEY", raising=False)
     monkeypatch.setattr(sys, "argv", ["archive_chat.py", "--llm", "--retrieval", "vector"])
 

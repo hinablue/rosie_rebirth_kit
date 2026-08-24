@@ -45,7 +45,7 @@ python -m scripts.archive_chat --archive /explicit/archive/root
 
 ```bash
 # key 留在程序環境中，不寫進 repository 或前端
-export LOCAL_LLM_API_KEY='...'
+export ARCHIVE_CHAT_LLM_API_KEY='...'
 python -m scripts.archive_chat \
   --host 0.0.0.0 --port 8765 --llm \
   --llm-endpoint http://127.0.0.1:8000/v1 \

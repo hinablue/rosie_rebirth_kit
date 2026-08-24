@@ -403,7 +403,7 @@ def main() -> int:
     parser.add_argument("--llm", action="store_true", help="Enable OpenAI-compatible answer generation")
     parser.add_argument("--llm-endpoint", default=os.getenv("ARCHIVE_CHAT_LLM_ENDPOINT", "http://127.0.0.1:8000/v1"))
     parser.add_argument("--llm-model", default=os.getenv("ARCHIVE_CHAT_LLM_MODEL", "Gemma4-26B"))
-    parser.add_argument("--llm-key-env", default="LOCAL_LLM_API_KEY")
+    parser.add_argument("--llm-key-env", default="ARCHIVE_CHAT_LLM_API_KEY")
     parser.add_argument("--retrieval", choices=("lexical", "vector"), default="vector")
     parser.add_argument("--embedding-endpoint", default=os.getenv("ARCHIVE_CHAT_EMBEDDING_ENDPOINT", "http://127.0.0.1:8001/v1"))
     parser.add_argument("--embedding-model", default=os.getenv("ARCHIVE_CHAT_EMBEDDING_MODEL", "BAAI/bge-m3"))

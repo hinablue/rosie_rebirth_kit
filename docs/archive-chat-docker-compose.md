@@ -11,7 +11,7 @@
 | Rebirth archive | 外部檔案系統 | `${ARCHIVE_PATH}` → `/archive:ro` |
 | Chat LLM | 主機既有 OpenAI-compatible service | `127.0.0.1:8000/v1` |
 | Embedding service | 主機既有 OpenAI-compatible service | `127.0.0.1:8001/v1` |
-| Chat LLM API key | host shell 或未提交 `.env` | `LOCAL_LLM_API_KEY` environment |
+| Chat LLM API key | host shell 或未提交 `.env` | `ARCHIVE_CHAT_LLM_API_KEY` environment |
 | Embedding API key | host shell 或未提交 `.env` | `ARCHIVE_CHAT_EMBEDDING_API_KEY` environment |
 
 Compose 使用 Linux `network_mode: host`，所以 container 內的 `127.0.0.1:8000`／`8001` 直接指向 Docker host 上既有服務。這不是在 container 裡啟動 LLM 或 embedding，也因此沒有 Compose `ports:` mapping，chat 直接使用主機的 `8765`。
@@ -21,7 +21,7 @@ Compose 使用 Linux `network_mode: host`，所以 container 內的 `127.0.0.1:8
 1. 實際 archive 已完成檢查，並有 `identity/source/SOUL.md` 和各 lane 的 `indexes/index.json`。
 2. 主機的 chat service 已可用：`http://127.0.0.1:8000/v1`。
 3. 主機的 embedding service 已可用：`http://127.0.0.1:8001/v1`，模型為與 index 相同的 `BAAI/bge-m3`，維度 `1024`。
-4. `LOCAL_LLM_API_KEY` 可對 chat LLM 認證。
+4. `ARCHIVE_CHAT_LLM_API_KEY` 可對 chat LLM 認證。
 5. `ARCHIVE_CHAT_EMBEDDING_API_KEY` 可對 host 的 `8001/v1/embeddings` 認證。
 6. Docker Engine / Compose 已可用。
 
@@ -39,7 +39,7 @@ cp .env.example .env
 
 ```dotenv
 ARCHIVE_PATH=/home/hina/Workspace/rosie_rebirth_archive
-LOCAL_LLM_API_KEY=replace-with-chat-llm-key
+ARCHIVE_CHAT_LLM_API_KEY=replace-with-chat-llm-key
 ARCHIVE_CHAT_EMBEDDING_API_KEY=replace-with-local-embedding-key
 ```
 

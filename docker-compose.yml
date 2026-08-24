@@ -8,7 +8,7 @@ services:
     restart: unless-stopped
     network_mode: host
     environment:
-      LOCAL_LLM_API_KEY: ${LOCAL_LLM_API_KEY:?Set LOCAL_LLM_API_KEY in your shell or .env}
+      ARCHIVE_CHAT_LLM_API_KEY: ${ARCHIVE_CHAT_LLM_API_KEY:?Set ARCHIVE_CHAT_LLM_API_KEY in your shell or .env}
       ARCHIVE_CHAT_EMBEDDING_API_KEY: ${ARCHIVE_CHAT_EMBEDDING_API_KEY:?Set ARCHIVE_CHAT_EMBEDDING_API_KEY in your shell or .env}
       ARCHIVE_CHAT_LLM_ENDPOINT: ${ARCHIVE_CHAT_LLM_ENDPOINT:-http://127.0.0.1:8000/v1}
       ARCHIVE_CHAT_LLM_MODEL: ${ARCHIVE_CHAT_LLM_MODEL:-Ornith-1.5-35B}
