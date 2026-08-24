@@ -21,6 +21,7 @@ def test_frontend_has_single_request_lock_markdown_and_ttl_storage() -> None:
     assert "messages.scrollTop = messages.scrollHeight" in source
     assert "4 * 60 * 60 * 1000" in source
     assert "persistMessage(\"assistant\", data.answer)" in source
+    assert "message(entry.role, entry.text, { markdown: true })" in source
     assert "new EventSource" in source
     assert "/api/chat/events" in source
     assert "addEventListener(\"done\"" in source

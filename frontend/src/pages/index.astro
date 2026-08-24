@@ -126,7 +126,7 @@ const title = "Rosie Rebirth Archive Chat";
       }
 
       function restoreMessages() {
-        readMessages().forEach((entry) => message(entry.role, entry.text));
+        readMessages().forEach((entry) => message(entry.role, entry.text, { markdown: true }));
         messages.scrollTop = messages.scrollHeight;
       }
 
