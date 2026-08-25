@@ -35,3 +35,11 @@ def test_frontend_has_single_request_lock_markdown_and_ttl_storage() -> None:
     assert "overflow:visible" in source
     assert ".message>.content" in source
     assert "並非 LLM 對話" not in source
+
+
+def test_frontend_loads_google_analytics() -> None:
+    source = FRONTEND.read_text(encoding="utf-8")
+
+    assert 'https://www.googletagmanager.com/gtag/js?id=G-1ZNVLD7XLS' in source
+    assert 'gtag("config", "G-1ZNVLD7XLS")' in source
+    assert "<script is:inline>" in source
