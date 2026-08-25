@@ -21,7 +21,7 @@ from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Callable, Iterator, Protocol, cast
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import parse_qs, quote, urlparse
 from urllib.request import Request, urlopen
 
 from scripts.build_index import OpenAICompatibleBackend
@@ -164,6 +164,59 @@ class OpenAICompatibleChatClient:
         content = result.get("choices", [{}])[0].get("message", {}).get("content", "")
         if not isinstance(content, str) or not content.strip():
             raise ArchiveChatError("LLM returned an empty answer")
+        return content.strip()
+
+
+class CloudflareWorkersAIChatClient:
+    """Cloudflare Workers AI REST client; its account token stays in process env."""
+
+    def __init__(self, account_id: str, model: str, api_token: str, api_base: str) -> None:
+        if not account_id.strip():
+            raise ArchiveChatError("Cloudflare account ID is empty")
+        if not api_token.strip():
+            raise ArchiveChatError("Cloudflare API token is empty")
+        if not model.strip():
+            raise ArchiveChatError("Cloudflare model is empty")
+        self.endpoint = (
+            api_base.rstrip("/")
+            + "/accounts/"
+            + quote(account_id.strip(), safe="")
+            + "/ai/run/"
+            + quote(model.strip(), safe="@/")
+        )
+        self.model = model.strip()
+        self.api_token = api_token
+
+    def complete(self, messages: list[dict[str, str]]) -> str:
+        payload = json.dumps({
+            "messages": messages,
+            "temperature": 0.2,
+            "max_completion_tokens": MAX_COMPLETION_TOKENS,
+        }).encode("utf-8")
+        request = Request(
+            self.endpoint,
+            data=payload,
+            method="POST",
+            headers={
+                "Content-Type": "application/json",
+                "Authorization": f"Bearer {self.api_token}",
+            },
+        )
+        with urlopen(request, timeout=120) as response:  # noqa: S310 - endpoint is operator configured
+            result = json.loads(response.read().decode("utf-8"))
+        if not result.get("success", False):
+            raise ArchiveChatError("Cloudflare Workers AI request failed")
+        model_result = result.get("result", {})
+        if not isinstance(model_result, dict):
+            raise ArchiveChatError("Cloudflare Workers AI returned an invalid result")
+        content = model_result.get("response")
+        if not isinstance(content, str):
+            choices = model_result.get("choices", [])
+            if isinstance(choices, list) and choices and isinstance(choices[0], dict):
+                message = choices[0].get("message", {})
+                content = message.get("content") if isinstance(message, dict) else None
+        if not isinstance(content, str) or not content.strip():
+            raise ArchiveChatError("Cloudflare Workers AI returned an empty answer")
         return content.strip()
 
 
@@ -470,23 +523,53 @@ def main() -> int:
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8765)
     parser.add_argument("--soul", type=Path, default=Path(__file__).resolve().parents[1] / "SOUL.md")
-    parser.add_argument("--llm", action="store_true", help="Enable OpenAI-compatible answer generation")
+    parser.add_argument("--llm", action="store_true", help="Enable answer generation")
+    parser.add_argument(
+        "--llm-provider",
+        choices=("openai-compatible", "cloudflare-workers-ai"),
+        default=os.getenv("ARCHIVE_CHAT_LLM_PROVIDER", "openai-compatible"),
+        help="Answer-generation provider",
+    )
     parser.add_argument("--llm-endpoint", default=os.getenv("ARCHIVE_CHAT_LLM_ENDPOINT", "http://127.0.0.1:8000/v1"))
     parser.add_argument("--llm-model", default=os.getenv("ARCHIVE_CHAT_LLM_MODEL", "Gemma4-26B"))
     parser.add_argument("--llm-key-env", default="ARCHIVE_CHAT_LLM_API_KEY")
+    parser.add_argument("--cloudflare-account-id", default=os.getenv("ARCHIVE_CHAT_CLOUDFLARE_ACCOUNT_ID", ""))
+    parser.add_argument("--cloudflare-api-token-env", default="ARCHIVE_CHAT_CLOUDFLARE_API_TOKEN")
+    parser.add_argument(
+        "--cloudflare-api-base",
+        default=os.getenv("ARCHIVE_CHAT_CLOUDFLARE_API_BASE", "https://api.cloudflare.com/client/v4"),
+    )
     parser.add_argument("--retrieval", choices=("lexical", "vector"), default="vector")
     parser.add_argument("--embedding-endpoint", default=os.getenv("ARCHIVE_CHAT_EMBEDDING_ENDPOINT", "http://127.0.0.1:8001/v1"))
     parser.add_argument("--embedding-model", default=os.getenv("ARCHIVE_CHAT_EMBEDDING_MODEL", "BAAI/bge-m3"))
     parser.add_argument("--embedding-key-env", default="ARCHIVE_CHAT_EMBEDDING_API_KEY")
     parser.add_argument("--vector-lane", action="append", default=[])
     args = parser.parse_args()
-    api_key = os.getenv(args.llm_key_env) if args.llm else None
-    if args.llm and not api_key:
-        parser.error(f"LLM mode requires a non-empty environment variable: {args.llm_key_env}")
+    if args.llm and args.llm_provider == "openai-compatible":
+        api_key = os.getenv(args.llm_key_env)
+        if not api_key:
+            parser.error(f"LLM mode requires a non-empty environment variable: {args.llm_key_env}")
+        client: ChatCompletionClient | None = OpenAICompatibleChatClient(args.llm_endpoint, args.llm_model, api_key)
+    elif args.llm and args.llm_provider == "cloudflare-workers-ai":
+        api_token = os.getenv(args.cloudflare_api_token_env)
+        if not args.cloudflare_account_id:
+            parser.error("Cloudflare Workers AI requires ARCHIVE_CHAT_CLOUDFLARE_ACCOUNT_ID")
+        if not api_token:
+            parser.error(
+                "Cloudflare Workers AI requires a non-empty environment variable: "
+                f"{args.cloudflare_api_token_env}"
+            )
+        client = CloudflareWorkersAIChatClient(
+            args.cloudflare_account_id,
+            args.llm_model,
+            api_token,
+            args.cloudflare_api_base,
+        )
+    else:
+        client = None
     embedding_key = os.getenv(args.embedding_key_env) if args.retrieval == "vector" else None
     if args.retrieval == "vector" and not embedding_key:
         parser.error(f"Vector retrieval requires a non-empty environment variable: {args.embedding_key_env}")
-    client = OpenAICompatibleChatClient(args.llm_endpoint, args.llm_model, api_key) if args.llm else None
     vector_searcher = VectorArchiveSearcher(args.archive, args.embedding_endpoint, args.embedding_model, embedding_key, set(args.vector_lane) or None) if args.retrieval == "vector" else None
     serve(args.archive, args.host, args.port, soul_path=args.soul, llm_client=client, vector_searcher=vector_searcher)
     return 0

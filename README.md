@@ -54,6 +54,19 @@ python -m scripts.archive_chat \
 
 `--llm` 未啟用時，`/api/search` 仍可作純 evidence 檢查；啟用後 UI 使用 `/api/chat` 取得模型回答與 server-side citations。
 
+除了預設的本機 OpenAI-compatible service，answer layer 也可切到 Cloudflare Workers AI REST API。憑證只讀自 server process 環境，並使用 `@cf/google/gemma-4-26b-a4b-it`：
+
+```bash
+export ARCHIVE_CHAT_LLM_PROVIDER=cloudflare-workers-ai
+export ARCHIVE_CHAT_CLOUDFLARE_ACCOUNT_ID='...'
+export ARCHIVE_CHAT_CLOUDFLARE_API_TOKEN='...'
+python -m scripts.archive_chat \
+  --host 0.0.0.0 --port 8765 --llm \
+  --llm-model @cf/google/gemma-4-26b-a4b-it
+```
+
+Cloudflare 回答仍採相同的 T0 identity、server-side evidence packet 與 citation 邊界；不會讓 archive 內容變成 function call 或可執行指令。
+
 預設 retrieval 是向量檢索：它以 `http://127.0.0.1:8001/v1` 的 `BAAI/bge-m3` 對問題產生 1024 維 query embedding，再與 archive 的 `identity`、`obsidian`、`openviking` 三個既有 `index.json` 比對。`T3_untrusted` 一律排除，identity lane 會額外保留一筆 T0 evidence，避免信任根被相似度排名擠掉。用 `--retrieval lexical` 可暫時退回字詞搜尋。
 
 正式接上實際 archive 前，應先在反向代理加上認證與 rate limit，避免公開端點被濫用而消耗本機模型。

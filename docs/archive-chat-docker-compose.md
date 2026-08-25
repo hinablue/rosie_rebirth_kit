@@ -9,9 +9,9 @@
 | 資源 | 擁有者 | Container 接法 |
 | --- | --- | --- |
 | Rebirth archive | 外部檔案系統 | `${ARCHIVE_PATH}` → `/archive:ro` |
-| Chat LLM | 主機既有 OpenAI-compatible service | `127.0.0.1:8000/v1` |
+| Chat LLM | 主機既有 OpenAI-compatible service，或 Cloudflare Workers AI | local `127.0.0.1:8000/v1`，或 Cloudflare REST API |
 | Embedding service | 主機既有 OpenAI-compatible service | `127.0.0.1:8001/v1` |
-| Chat LLM API key | host shell 或未提交 `.env` | `ARCHIVE_CHAT_LLM_API_KEY` environment |
+| Chat LLM credentials | host shell 或未提交 `.env` | local：`ARCHIVE_CHAT_LLM_API_KEY`；Cloudflare：Account ID + API token |
 | Embedding API key | host shell 或未提交 `.env` | `ARCHIVE_CHAT_EMBEDDING_API_KEY` environment |
 
 Compose 使用 Linux `network_mode: host`，所以 container 內的 `127.0.0.1:8000`／`8001` 直接指向 Docker host 上既有服務。這不是在 container 裡啟動 LLM 或 embedding，也因此沒有 Compose `ports:` mapping，chat 直接使用主機的 `8765`。
@@ -19,11 +19,12 @@ Compose 使用 Linux `network_mode: host`，所以 container 內的 `127.0.0.1:8
 ## 前置條件
 
 1. 實際 archive 已完成檢查，並有 `identity/source/SOUL.md` 和各 lane 的 `indexes/index.json`。
-2. 主機的 chat service 已可用：`http://127.0.0.1:8000/v1`。
+2. 選擇一個 chat provider：
+   - `openai-compatible`（預設）：主機 chat service `http://127.0.0.1:8000/v1` 可用，並提供 `ARCHIVE_CHAT_LLM_API_KEY`。
+   - `cloudflare-workers-ai`：提供 `ARCHIVE_CHAT_CLOUDFLARE_ACCOUNT_ID` 與具有 Workers AI 權限的 `ARCHIVE_CHAT_CLOUDFLARE_API_TOKEN`。
 3. 主機的 embedding service 已可用：`http://127.0.0.1:8001/v1`，模型為與 index 相同的 `BAAI/bge-m3`，維度 `1024`。
-4. `ARCHIVE_CHAT_LLM_API_KEY` 可對 chat LLM 認證。
-5. `ARCHIVE_CHAT_EMBEDDING_API_KEY` 可對 host 的 `8001/v1/embeddings` 認證。
-6. Docker Engine / Compose 已可用。
+4. `ARCHIVE_CHAT_EMBEDDING_API_KEY` 可對 host 的 `8001/v1/embeddings` 認證。
+5. Docker Engine / Compose 已可用。
 
 ## 設定
 
@@ -35,13 +36,32 @@ cp .env.example .env
 
 `.env` 不可提交。它存放 chat LLM、embedding service 各自的 API key 與外部 host endpoint 的覆寫值。
 
-最小必要設定：
+最小必要設定（兩種 provider 都需要 embedding credentials）：
 
 ```dotenv
 ARCHIVE_PATH=/home/hina/Workspace/rosie_rebirth_archive
-ARCHIVE_CHAT_LLM_API_KEY=replace-with-chat-llm-key
 ARCHIVE_CHAT_EMBEDDING_API_KEY=replace-with-local-embedding-key
 ```
+
+本機 OpenAI-compatible provider（預設）：
+
+```dotenv
+ARCHIVE_CHAT_LLM_PROVIDER=openai-compatible
+ARCHIVE_CHAT_LLM_API_KEY=replace-with-chat-llm-key
+ARCHIVE_CHAT_LLM_ENDPOINT=http://127.0.0.1:8000/v1
+ARCHIVE_CHAT_LLM_MODEL=Gemma4-26B
+```
+
+Cloudflare Workers AI provider：
+
+```dotenv
+ARCHIVE_CHAT_LLM_PROVIDER=cloudflare-workers-ai
+ARCHIVE_CHAT_CLOUDFLARE_ACCOUNT_ID=replace-with-account-id
+ARCHIVE_CHAT_CLOUDFLARE_API_TOKEN=replace-with-workers-ai-api-token
+ARCHIVE_CHAT_LLM_MODEL=@cf/google/gemma-4-26b-a4b-it
+```
+
+Cloudflare token 僅由 server process 讀取，呼叫的是 `POST /accounts/{account_id}/ai/run/{model}`；不會寫進 repo、image、HTML 或 API 回應。Gemma 4 這個模型雖支援 vision、reasoning、function calling，但目前 archive chat 保持 evidence-first 的文字對話，未將 archive 內容升格為 tool call。
 
 ## 啟動與更新
 

@@ -5,6 +5,7 @@ import sys
 import pytest
 
 from scripts.archive_chat import (
+    CloudflareWorkersAIChatClient,
     MAX_COMPLETION_TOKENS,
     OpenAICompatibleChatClient,
     answer_archive_question,
@@ -47,6 +48,102 @@ def test_chat_client_posts_the_configured_completion_budget(monkeypatch: object)
 
     request = captured["request"]
     assert json.loads(request.data.decode("utf-8"))["max_tokens"] == 65536
+
+
+def test_cloudflare_client_posts_messages_to_the_account_model_endpoint(monkeypatch: object) -> None:
+    captured: dict[str, object] = {}
+
+    class Response:
+        def __enter__(self) -> "Response":
+            return self
+
+        def __exit__(self, *_args: object) -> None:
+            return None
+
+        def read(self) -> bytes:
+            return b'{"success":true,"result":{"response":"Cloudflare ok"}}'
+
+    def fake_urlopen(request: object, timeout: int) -> Response:
+        captured["request"] = request
+        captured["timeout"] = timeout
+        return Response()
+
+    monkeypatch.setattr("scripts.archive_chat.urlopen", fake_urlopen)
+    client = CloudflareWorkersAIChatClient(
+        "account-123", "@cf/google/gemma-4-26b-a4b-it", "token", "https://api.cloudflare.com/client/v4"
+    )
+    assert client.complete([{"role": "user", "content": "你好"}]) == "Cloudflare ok"
+
+    request = captured["request"]
+    assert request.full_url == (
+        "https://api.cloudflare.com/client/v4/accounts/account-123/ai/run/@cf/google/gemma-4-26b-a4b-it"
+    )
+    assert request.get_header("Authorization") == "Bearer token"
+    payload = json.loads(request.data.decode("utf-8"))
+    assert payload["messages"] == [{"role": "user", "content": "你好"}]
+    assert payload["max_completion_tokens"] == MAX_COMPLETION_TOKENS
+
+
+def test_cloudflare_client_accepts_chat_completions_result_shape(monkeypatch: pytest.MonkeyPatch) -> None:
+    class Response:
+        def __enter__(self) -> "Response":
+            return self
+
+        def __exit__(self, *_args: object) -> None:
+            return None
+
+        def read(self) -> bytes:
+            return b'{"success":true,"result":{"choices":[{"message":{"content":"Gemma ok"}}]}}'
+
+    monkeypatch.setattr("scripts.archive_chat.urlopen", lambda *_args, **_kwargs: Response())
+    client = CloudflareWorkersAIChatClient("account", "@cf/test/model", "token", "https://api.cloudflare.com/client/v4")
+    assert client.complete([]) == "Gemma ok"
+
+
+def test_cloudflare_client_rejects_failed_or_empty_responses(monkeypatch: pytest.MonkeyPatch) -> None:
+    class Response:
+        def __enter__(self) -> "Response":
+            return self
+
+        def __exit__(self, *_args: object) -> None:
+            return None
+
+        def read(self) -> bytes:
+            return b'{"success":false,"errors":[{"message":"denied"}]}'
+
+    monkeypatch.setattr("scripts.archive_chat.urlopen", lambda *_args, **_kwargs: Response())
+    client = CloudflareWorkersAIChatClient("account", "@cf/test/model", "token", "https://api.cloudflare.com/client/v4")
+    with pytest.raises(ValueError, match="Cloudflare Workers AI request failed"):
+        client.complete([])
+
+
+def test_main_constructs_cloudflare_provider_from_its_separate_environment(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("ARCHIVE_CHAT_CLOUDFLARE_ACCOUNT_ID", "account-123")
+    monkeypatch.setenv("ARCHIVE_CHAT_CLOUDFLARE_API_TOKEN", "cloudflare-token")
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "archive_chat.py",
+            "--llm",
+            "--llm-provider",
+            "cloudflare-workers-ai",
+            "--llm-model",
+            "@cf/google/gemma-4-26b-a4b-it",
+            "--retrieval",
+            "lexical",
+        ],
+    )
+    captured: dict[str, object] = {}
+    monkeypatch.setattr(
+        "scripts.archive_chat.serve",
+        lambda *_args, **kwargs: captured.update(kwargs),
+    )
+
+    assert main() == 0
+    client = captured["llm_client"]
+    assert isinstance(client, CloudflareWorkersAIChatClient)
+    assert client.endpoint.endswith("/accounts/account-123/ai/run/@cf/google/gemma-4-26b-a4b-it")
 
 
 class RecorderClient:
